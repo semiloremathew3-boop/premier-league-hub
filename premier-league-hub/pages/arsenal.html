@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Arsenal Dashboard | Premier League Hub</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="inner">
+        <a class="brand" href="/">
+            <img src="/static/img/badge.svg" alt="">
+            <div>
+                <div class="name">Premier League Hub</div>
+                <div class="tag">Featuring Arsenal</div>
+            </div>
+        </a>
+        <nav>
+            <a href="/">League Table</a>
+            <a href="/arsenal">Arsenal</a>
+            <a href="/fixtures">Fixtures &amp; Results</a>
+            <a href="/teams">Teams</a>
+        </nav>
+    </div>
+</header>
+<main>
+    <div class="page-title">
+        <div>
+            <h2>Arsenal Dashboard</h2>
+            <p>Position, results and fixtures, all calculated from the data stored on the server.</p>
+        </div>
+        <span id="live-status" class="live">Connecting</span>
+    </div>
+
+    <p id="dash-error" class="notice error" hidden></p>
+
+    <section class="hero">
+        <div>
+            <h2 id="hero-name">Arsenal</h2>
+            <p id="hero-stadium">Loading...</p>
+            <p id="hero-gap"></p>
+        </div>
+        <div class="position">
+            <div class="big" id="hero-position">-</div>
+            <div class="small" id="hero-of">in the league</div>
+        </div>
+    </section>
+
+    <div class="stats">
+        <div class="stat"><div class="value" id="st-played">-</div><div class="label">Played</div></div>
+        <div class="stat"><div class="value" id="st-won">-</div><div class="label">Won</div></div>
+        <div class="stat"><div class="value" id="st-drawn">-</div><div class="label">Drawn</div></div>
+        <div class="stat"><div class="value" id="st-lost">-</div><div class="label">Lost</div></div>
+        <div class="stat"><div class="value" id="st-gd">-</div><div class="label">Goal diff</div></div>
+        <div class="stat"><div class="value" id="st-points">-</div><div class="label">Points</div></div>
+    </div>
+
+    <section class="card" style="margin-bottom: 20px;">
+        <h3>Recent form</h3>
+        <div id="form-chips" class="form-chips"></div>
+    </section>
+
+    <div class="two-col">
+        <section class="card">
+            <h3>Upcoming fixtures</h3>
+            <div id="next-match"></div>
+            <div id="upcoming"></div>
+        </section>
+        <section class="card">
+            <h3>Results</h3>
+            <div id="results"></div>
+        </section>
+    </div>
+</main>
+<div id="toast" class="toast"></div>
+
+<script src="/static/js/common.js"></script>
+<script>
+    function setText(id, text) {
+        document.getElementById(id).textContent = text;
+    }
+
+    // One request gets everything the dashboard needs
+    function loadDashboard() {
+        xhrRequest("GET", "/api/arsenal", null, (err, d) => {
+            const errorBox = document.getElementById("dash-error");
+            if (err) {
+                errorBox.textContent = err;
+                errorBox.hidden = false;
+                return;
+            }
+            errorBox.hidden = true;
+
+            setText("hero-name", d.team.name);
+            setText("hero-stadium", d.team.stadium);
+            setText("hero-gap", d.position === 1 ? "Top of the table" : d.gapToLeader + " points behind " + d.leader);
+            setText("hero-position", ordinal(d.position));
+            setText("hero-of", "of " + d.totalTeams + " clubs");
+            setText("st-played", d.row.played);
+            setText("st-won", d.row.won);
+            setText("st-drawn", d.row.drawn);
+            setText("st-lost", d.row.lost);
+            setText("st-gd", d.row.gd > 0 ? "+" + d.row.gd : d.row.gd);
+            setText("st-points", d.row.points);
+
+            const chips = document.getElementById("form-chips");
+            clear(chips);
+            if (d.form.length === 0) chips.appendChild(el("span", "No matches played yet.", "muted"));
+            for (const result of d.form) chips.appendChild(formChip(result));
+
+            // The Upcoming fixtures.
+            const nextBox = document.getElementById("next-match");
+            const upcomingBox = document.getElementById("upcoming");
+            clear(nextBox);
+            clear(upcomingBox);
+            if (d.upcoming.length === 0) {
+                upcomingBox.appendChild(el("p", "No upcoming fixtures.", "muted"));
+            }
+            if (d.nextMatch) {
+                const card = el("div", null, "next-match");
+                card.appendChild(el("div", "Next match - matchday " + d.nextMatch.matchday, "label"));
+                card.appendChild(el("div", d.team.name + " vs " + d.nextMatch.opponent, "what"));
+                card.appendChild(el("div", d.nextMatch.venue, "venue"));
+                nextBox.appendChild(card);
+            }
+            for (const m of d.upcoming.slice(1)) {
+                const row = el("div", null, "list-row");
+                row.appendChild(el("span", "MD" + m.matchday + "  " + m.opponent));
+                row.appendChild(el("span", m.venue, "venue"));
+                upcomingBox.appendChild(row);
+            }
+
+            // The Resultswith the  most recent coming first
+            const resultsBox = document.getElementById("results");
+            clear(resultsBox);
+            if (d.results.length === 0) resultsBox.appendChild(el("p", "No results yet.", "muted"));
+            for (const r of d.results) {
+                const row = el("div", null, "list-row");
+                row.appendChild(el("span", "MD" + r.matchday + "  " + r.opponent + "  (" + r.venue + ")"));
+                const right = el("span");
+                right.appendChild(el("strong", r.score));
+                right.appendChild(document.createTextNode(" "));
+                right.appendChild(formChip(r.result));
+                row.appendChild(right);
+                resultsBox.appendChild(row);
+            }
+        });
+    }
+
+    markActiveNav();
+    loadDashboard();
+    connectLive(loadDashboard);
+</script>
+</body>
+</html>

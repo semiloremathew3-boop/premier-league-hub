@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Fixtures &amp; Results | Premier League Hub</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="inner">
+        <a class="brand" href="/">
+            <img src="/static/img/badge.svg" alt="">
+            <div>
+                <div class="name">Premier League Hub</div>
+                <div class="tag">Featuring Arsenal</div>
+            </div>
+        </a>
+        <nav>
+            <a href="/">League Table</a>
+            <a href="/arsenal">Arsenal</a>
+            <a href="/fixtures">Fixtures &amp; Results</a>
+            <a href="/teams">Teams</a>
+        </nav>
+    </div>
+</header>
+<main>
+    <div class="page-title">
+        <div>
+            <h2>Fixtures &amp; Results</h2>
+            <p>Enter a score and press Save. The server records it and the league table updates automatically.</p>
+        </div>
+        <span id="live-status" class="live">Connecting</span>
+    </div>
+
+    <section class="card">
+        <div class="filters">
+            <div>
+                <label for="status-filter">Show</label>
+                <select id="status-filter">
+                    <option value="">All matches</option>
+                    <option value="upcoming">Upcoming only</option>
+                    <option value="played">Played only</option>
+                </select>
+            </div>
+            <div>
+                <label for="team-filter">Club</label>
+                <select id="team-filter">
+                    <option value="">All clubs</option>
+                </select>
+            </div>
+        </div>
+        <div id="fixture-list"></div>
+    </section>
+</main>
+<div id="toast" class="toast"></div>
+
+<script src="/static/js/common.js"></script>
+<script>
+    const listBox = document.getElementById("fixture-list");
+    const statusFilter = document.getElementById("status-filter");
+    const teamFilter = document.getElementById("team-filter");
+
+    // Get the clubs from the server and keep the one already selected
+    function loadTeamFilter() {
+        xhrRequest("GET", "/api/teams", null, (err, teams) => {
+            if (err) return;
+            const current = teamFilter.value;
+            clear(teamFilter);
+            const all = el("option", "All clubs");
+            all.value = "";
+            teamFilter.appendChild(all);
+            for (const t of teams) {
+                const option = el("option", t.name);
+                option.value = t.id;
+                teamFilter.appendChild(option);
+            }
+            teamFilter.value = current;
+        });
+    }
+
+    // For the fixtures: a home name, two score boxes, an away name and a save button
+    function fixtureRow(f) {
+        const row = el("div", null, "fixture");
+        row.appendChild(el("span", f.home.name, "home" + (f.home.featured ? " is-featured" : "")));
+        const goals = el("div", null, "goals");
+        const homeBox = el("input");
+        const awayBox = el("input");
+        for (const box of [homeBox, awayBox]) {
+            box.type = "number";
+            box.min = 0;
+            box.max = 20;
+        }
+        homeBox.setAttribute("aria-label", f.home.name + " goals");
+        awayBox.setAttribute("aria-label", f.away.name + " goals");
+        if (f.played) {
+            homeBox.value = f.homeGoals;
+            awayBox.value = f.awayGoals;
+        }
+        goals.appendChild(homeBox);
+        goals.appendChild(el("span", "-"));
+        goals.appendChild(awayBox);
+        row.appendChild(goals);
+
+        row.appendChild(el("span", f.away.name, "away" + (f.away.featured ? " is-featured" : "")));
+
+        const action = el("div", null, "action");
+        const button = el("button", f.played ? "Update" : "Save result", "small" + (f.played ? " secondary" : ""));
+        button.addEventListener("click", () => saveResult(f.id, homeBox.value, awayBox.value));
+        action.appendChild(button);
+        action.appendChild(el("span", f.played ? "Played" : "Upcoming", "status " + (f.played ? "done" : "todo")));
+        row.appendChild(action);
+        return row;
+    }
+
+    function loadFixtures() {
+        const params = [];
+        if (statusFilter.value) params.push("status=" + encodeURIComponent(statusFilter.value));
+        if (teamFilter.value) params.push("team=" + encodeURIComponent(teamFilter.value));
+        const url = "/api/fixtures" + (params.length > 0 ? "?" + params.join("&") : "");
+
+        xhrRequest("GET", url, null, (err, list) => {
+            clear(listBox);
+            if (err) {
+                listBox.appendChild(el("p", err, "notice error"));
+                return;
+            }
+            if (list.length === 0) {
+                listBox.appendChild(el("p", "No matches found.", "muted"));
+                return;
+            }
+            // The list is sorted by matchday, so we start a new heading when the matchday changes
+            let currentMatchday = null;
+            for (const f of list) {
+                if (f.matchday !== currentMatchday) {
+                    currentMatchday = f.matchday;
+                    listBox.appendChild(el("div", "Matchday " + f.matchday, "matchday"));
+                }
+                listBox.appendChild(fixtureRow(f));
+            }
+        });
+    }
+
+     // Send the match ID and score to the server using AJAX
+    function saveResult(fixtureId, homeGoals, awayGoals) {
+        xhrRequest("POST", "/api/fixtures/" + fixtureId + "/result", { homeGoals: homeGoals, awayGoals: awayGoals }, (err) => {
+            if (err) {
+                toast(err, true);
+                return;
+            }
+            loadFixtures(); // The success message comes from the server through live updates
+        });
+    }
+
+    // Update the list when the server changes something, unless the user is entering a score
+    // So the user doesn't lose the score they're typing
+    function onServerChange() {
+        const active = document.activeElement;
+        if (active && active.tagName === "INPUT" && listBox.contains(active)) return;
+        loadTeamFilter();
+        loadFixtures();
+    }
+
+    statusFilter.addEventListener("change", loadFixtures);
+    teamFilter.addEventListener("change", loadFixtures);
+
+    markActiveNav();
+    loadTeamFilter();
+    loadFixtures();
+    connectLive(onServerChange);
+</script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teams | Premier League Hub</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<header class="site-header">
+<div class="inner">
+<a class="brand" href="/">
+<img src="/static/img/badge.svg" alt="">
+<div>
+<div class="name">Premier League Hub</div>
+<div class="tag">Featuring Arsenal</div>
+</div>
+</a>
+<nav>
+<a href="/">League Table</a>
+            <a href="/arsenal">Arsenal</a>
+            <a href="/fixtures">Fixtures &amp; Results</a>
+            <a href="/teams">Teams</a>
+        </nav>
+    </div>
+</header>
+<main>
+    <div class="page-title">
+        <div>
+            <h2>Team Management</h2>
+            <p>Add, edit and remove the clubs in the league. Every change is sent to the server.</p>
+        </div>
+        <span id="live-status" class="live">Connecting</span>
+    </div>
+
+    <div class="grid">
+        <section class="card">
+            <h3>Clubs</h3>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Club</th><th>Stadium</th><th></th></tr></thead>
+                    <tbody id="teams-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3 id="form-title">Add a team</h3>
+            <p id="notice" class="notice ok" hidden></p>
+
+            <!-- If JavaScript is off, the form submits normally. If it's on, AJAX handles it instead. -->
+            <form id="team-form" method="post" action="/teams">
+                <input type="hidden" id="team-id">
+
+                <label for="name">Team name</label>
+                <input type="text" id="name" name="name" required minlength="2" maxlength="30">
+
+                <label for="stadium">Stadium (optional)</label>
+                <input type="text" id="stadium" name="stadium" maxlength="40">
+
+                <div class="form-actions">
+                    <button type="submit" id="submit-button">Add team</button>
+                    <button type="button" id="cancel-button" class="secondary" hidden>Cancel</button>
+                </div>
+            </form>
+        </section>
+    </div>
+</main>
+<div id="toast" class="toast"></div>
+
+<script src="/static/js/common.js"></script>
+<script>
+    const form = document.getElementById("team-form");
+    const idField = document.getElementById("team-id");
+    const nameField = document.getElementById("name");
+    const stadiumField = document.getElementById("stadium");
+    const submitButton = document.getElementById("submit-button");
+    const cancelButton = document.getElementById("cancel-button");
+    const formTitle = document.getElementById("form-title");
+    const notice = document.getElementById("notice");
+
+    function showNotice(text, isError) {
+        notice.textContent = text;
+        notice.className = "notice " + (isError ? "error" : "ok");
+        notice.hidden = false;
+    }
+
+    // Put the form into "edit" mode for one team
+    function startEdit(team) {
+        idField.value = team.id;
+        nameField.value = team.name;
+        stadiumField.value = team.stadium === "To be confirmed" ? "" : team.stadium;
+        formTitle.textContent = "Edit " + team.name;
+        submitButton.textContent = "Save changes";
+        cancelButton.hidden = false;
+        notice.hidden = true;
+        nameField.focus();
+    }
+
+    // Back to the plain "add a team" form
+    function resetForm() {
+        form.reset();
+        idField.value = "";
+        formTitle.textContent = "Add a team";
+        submitButton.textContent = "Add team";
+        cancelButton.hidden = true;
+    }
+
+    function removeTeam(team) {
+        if (!confirm("Remove " + team.name + "? All of its fixtures will be deleted too.")) return;
+        // Use the team ID to know which team to remove, then send a POST request to delete it
+        xhrRequest("POST", "/api/teams/" + team.id + "/delete", {}, (err) => {
+            if (err) {
+                toast(err, true);
+                return;
+            }
+            if (idField.value === String(team.id)) resetForm();
+            loadTeams();
+        });
+    }
+
+    function loadTeams() {
+        xhrRequest("GET", "/api/teams", null, (err, teams) => {
+            const tbody = document.getElementById("teams-body");
+            clear(tbody);
+            if (err) {
+                showNotice(err, true);
+                return;
+            }
+            for (const team of teams) {
+                const tr = document.createElement("tr");
+                if (team.featured) tr.className = "featured";
+
+                const nameCell = el("td", team.name, "club");
+                if (team.featured) nameCell.appendChild(el("span", "  Featured", "venue"));
+                tr.appendChild(nameCell);
+                tr.appendChild(el("td", team.stadium));
+
+                const actions = el("td", null, "num");
+                const editButton = el("button", "Edit", "small secondary");
+                editButton.addEventListener("click", () => startEdit(team));
+                actions.appendChild(editButton);
+                if (!team.featured) {
+                    actions.appendChild(document.createTextNode(" "));
+                    const removeButton = el("button", "Remove", "small danger");
+                    removeButton.addEventListener("click", () => removeTeam(team));
+                    actions.appendChild(removeButton);
+                }
+                tr.appendChild(actions);
+                tbody.appendChild(tr);
+            }
+        });
+    }
+
+    // Catch the form submit, stop the page reload, and send the data with AJAX (JSON in the HTTP body)
+    form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const body = { name: nameField.value, stadium: stadiumField.value };
+        const editing = idField.value !== "";
+        const url = editing ? "/api/teams/" + idField.value + "/edit" : "/api/teams";
+
+        xhrRequest("POST", url, body, (err, team) => {
+            if (err) {
+                showNotice(err, true);
+                return;
+            }
+            showNotice((editing ? "Saved " : "Added ") + team.name + ".", false);
+            resetForm();
+            loadTeams();
+        });
+    });
+
+    cancelButton.addEventListener("click", () => {
+        resetForm();
+        notice.hidden = true;
+    });
+
+    markActiveNav();
+    loadTeams();
+    connectLive(loadTeams);
+</script>
+</body>
+</html>

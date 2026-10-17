@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>League Table | Premier League Hub</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<header class="site-header">
+    <div class="inner">
+        <a class="brand" href="/">
+            <img src="/static/img/badge.svg" alt="">
+            <div>
+                <div class="name">Premier League Hub</div>
+                <div class="tag">Featuring Arsenal</div>
+            </div>
+        </a>
+        <nav>
+            <a href="/">League Table</a>
+            <a href="/arsenal">Arsenal</a>
+            <a href="/fixtures">Fixtures &amp; Results</a>
+            <a href="/teams">Teams</a>
+        </nav>
+    </div>
+</header>
+<main>
+    <div class="page-title">
+        <div>
+            <h2>League Table</h2>
+            <p>Standings are calculated from the match results every time this page loads.</p>
+        </div>
+        <span id="live-status" class="live">Connecting</span>
+    </div>
+
+    <div class="grid">
+        <section class="card">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Club</th>
+                            <th class="num">P</th><th class="num">W</th><th class="num">D</th><th class="num">L</th>
+                            <th class="num">GF</th><th class="num">GA</th><th class="num">GD</th><th class="num">Pts</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+            <p id="table-error" class="notice error" hidden></p>
+            <div class="legend">
+                <span><i style="background: var(--green)"></i>Top two</span>
+                <span><i style="background: var(--red)"></i>Bottom two</span>
+            </div>
+            <div class="form-actions">
+                <a class="button secondary" href="/download/table">Download table (CSV)</a>
+            </div>
+        </section>
+
+        <div class="stack">
+            <section class="card">
+                <h3>Latest results</h3>
+                <ul id="latest" class="match-list"></ul>
+            </section>
+            <section class="card">
+                <h3 id="snap-title">Featured club</h3>
+                <div id="snap"></div>
+                <div class="form-actions">
+                    <a class="button small" href="/arsenal">Open dashboard</a>
+                </div>
+            </section>
+        </div>
+    </div>
+</main>
+<div id="toast" class="toast"></div>
+<script src="/static/js/common.js"></script>
+<script>
+    // Each load function asks the server for data with AJAX and then rebuilds part of the page.
+
+    function loadTable() {
+        xhrRequest("GET", "/api/table", null, (err, rows) => {
+            const tbody = document.getElementById("table-body");
+            const box = document.getElementById("table-error");
+            if (err) {
+                box.textContent = err;
+                box.hidden = false;
+                return;
+            }
+            box.hidden = true;
+            clear(tbody);
+            for (const r of rows) {
+                const tr = document.createElement("tr");
+                const classes = [];
+                if (r.featured) classes.push("featured");
+                if (rows.length >= 6 && r.position <= 2) classes.push("zone-top");
+                if (rows.length >= 6 && r.position > rows.length - 2) classes.push("zone-bottom");
+                tr.className = classes.join(" ");
+
+                tr.appendChild(el("td", r.position, "pos"));
+                tr.appendChild(el("td", r.name, "club"));
+                for (const value of [r.played, r.won, r.drawn, r.lost, r.gf, r.ga]) {
+                    tr.appendChild(el("td", value, "num"));
+                }
+                tr.appendChild(el("td", r.gd > 0 ? "+" + r.gd : r.gd, "num"));
+                tr.appendChild(el("td", r.points, "num pts"));
+                tbody.appendChild(tr);
+            }
+        });
+    }
+
+    // QUERY STRING: ask only for played matches, then show the four most recent
+    function loadLatest() {
+        xhrRequest("GET", "/api/fixtures?status=played", null, (err, list) => {
+            const ul = document.getElementById("latest");
+            clear(ul);
+            if (err || list.length === 0) {
+                ul.appendChild(el("li", err || "No results yet.", "muted"));
+                return;
+            }
+            for (const f of list.slice(-4).reverse()) {
+                ul.appendChild(matchRow(f));
+            }
+        });
+    }
+
+    function loadSnapshot() {
+        xhrRequest("GET", "/api/arsenal", null, (err, d) => {
+            const box = document.getElementById("snap");
+            clear(box);
+            if (err) {
+                box.appendChild(el("p", err, "muted"));
+                return;
+            }
+            document.getElementById("snap-title").textContent = d.team.name;
+            box.appendChild(el("p", ordinal(d.position) + " of " + d.totalTeams + " with " + d.row.points + " points"));
+            const chips = el("div", null, "form-chips");
+            for (const result of d.form) chips.appendChild(formChip(result));
+            box.appendChild(chips);
+            if (d.nextMatch) {
+                box.appendChild(el("p", "Next: " + d.nextMatch.opponent + " (" + d.nextMatch.venue + ")", "muted"));
+            }
+        });
+    }
+
+    function refreshAll() {
+        loadTable();
+        loadLatest();
+        loadSnapshot();
+    }
+
+    markActiveNav();
+    refreshAll();
+    connectLive(refreshAll);   // refresh again whenever the server announces a change
+</script>
+</body>
+</html>

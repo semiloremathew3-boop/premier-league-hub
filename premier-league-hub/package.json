@@ -1,0 +1,12 @@
+{
+    "name": "premier-league-hub",
+    "version": "1.0.0",
+    "description": "Premier League Hub: a small league management server with an Arsenal dashboard (Advanced Internet Programming midterm)",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js"
+    },
+    "dependencies": {
+        "express": "^5.1.0"
+    }
+}
